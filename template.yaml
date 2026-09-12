@@ -1,0 +1,309 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM Template - ABAC via Cognito, HTTP API Gateway, Lambda, and AWS IoT Publishing.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Deployment environment (dev or prod)
+  ProjectName:
+    Type: String
+    Default: "House Control"
+    Description: Project name for resource naming and tagging
+  ResourcesName:
+    Type: String
+    Default: "house-control"
+    Description: Cognito User Pool name
+
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 256
+    Runtime: python3.11
+
+Resources:
+
+  # ------------------------------------------------------------------
+  # 1. COGNITO USER POOL & CLIENT (With ABAC Attribute)
+  # ------------------------------------------------------------------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${ResourcesName}-userpool-${Environment}
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        # Custom attribute used for ABAC authorization checks
+        - Name: custom_access_level
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub ${ResourcesName}-userpool-client-${Environment}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+
+  # ------------------------------------------------------------------
+  # 2. COGNITO IDENTITY POOL (ABAC Role Mapping)
+  # ------------------------------------------------------------------
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub ${ResourcesName}-identitypool-${Environment}
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+
+  # Attach ABAC claim mapping to the Identity Pool
+  IdentityPoolPrincipalTag:
+    Type: AWS::Cognito::IdentityPoolPrincipalTag
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      IdentityProviderName: !GetAtt UserPool.ProviderName
+      UseDefaults: false
+      PrincipalTags:
+        # Maps the user's Cognito custom attribute to an IAM Principal Tag
+        AccessLevel: custom:custom_access_level
+
+  AuthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action:
+              - sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+              'ForAnyValue:StringLike':
+                cognito-identity.amazonaws.com:amr: authenticated
+
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt AuthenticatedRole.Arn
+
+  # ------------------------------------------------------------------
+  # 3. HTTP API GATEWAY (JWT Authorizer via Cognito)
+  # ------------------------------------------------------------------
+  HttpApiGateway:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: !Sub ${ResourcesName}-http-api-${Environment}
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience:
+                - !Ref UserPoolClient
+
+  # ------------------------------------------------------------------
+  # 4. LAMBDA FUNCTION & IOT PERMISSIONS
+  # ------------------------------------------------------------------
+  # IoTCreateUserFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     Tags:
+  #       Project: !Ref ProjectName
+  #       Environment: !Ref Environment
+  #     Handler: src/create_user/app.lambda_handler
+  #     Events:
+  #       CreateUser:
+  #         Type: HttpApi
+  #         Properties:
+  #           ApiId: !Ref HttpApiGateway
+  #           Path: /create-user
+  #           Method: POST
+  #     Policies:
+  #       - Statement:
+  #           - Effect: Allow
+  #             Action:
+  #               - dynamodb:Query
+  #               - dynamodb:Scan
+  #               - dynamodb:PutItem
+  #               - dynamodb:UpdateItem
+  #             Resource: !GetAtt UsersTable.Arn
+
+  # IoTCreateActuatorFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     Tags:
+  #       Project: !Ref ProjectName
+  #       Environment: !Ref Environment
+  #     Handler: src/create_actuator/app.lambda_handler
+  #     Events:
+  #       CreateActuator:
+  #         Type: HttpApi
+  #         Properties:
+  #           ApiId: !Ref HttpApiGateway
+  #           Path: /create-actuator
+  #           Method: POST
+  #     Policies:
+  #       - Statement:
+  #           - Effect: Allow
+  #             Action:
+  #               - dynamodb:Query
+  #               - dynamodb:Scan
+  #               - dynamodb:PutItem
+  #               - dynamodb:UpdateItem
+  #             Resource: !GetAtt UsersTable.Arn
+  #           - Effect: Allow
+  #             Action:
+  #               - dynamodb:Query
+  #               - dynamodb:Scan
+  #               - dynamodb:PutItem
+  #               - dynamodb:UpdateItem
+  #             Resource: !GetAtt HousesTable.Arn
+
+
+  # IotPublisherFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     Tags:
+  #       Project: !Ref ProjectName
+  #       Environment: !Ref Environment
+  #     Handler: src/control/app.lambda_handler
+  #     Events:
+  #       PublishCommand:
+  #         Type: HttpApi
+  #         Properties:
+  #           ApiId: !Ref HttpApiGateway
+  #           Path: /control
+  #           Method: POST
+  #     Policies:
+  #       # Strict Principle of Least Privilege: Only allow iot:Publish to 'test_1'
+  #       - Statement:
+  #           - Effect: Allow
+  #             Action:
+  #               - dynamodb:Query
+  #               - dynamodb:Scan
+  #               - dynamodb:PutItem
+  #               - dynamodb:UpdateItem
+  #             Resource: !GetAtt UsersTable.Arn
+  #           - Effect: Allow
+  #             Action:
+  #               - dynamodb:Query
+  #               - dynamodb:Scan
+  #               - dynamodb:PutItem
+  #               - dynamodb:UpdateItem
+  #             Resource: !GetAtt HousesTable.Arn
+  #           - Effect: Allow
+  #             Action:
+  #               - iot:Publish
+  #             Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/*/control
+
+  FetchUserHousesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+      Handler: src/fetch_houses/app.lambda_handler
+      Environment:
+        Variables:
+          HOUSES_TABLE_NAME: !Ref HousesTable
+      Events:
+        FetchUserHouses:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /houses
+            Method: GET
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                # - dynamodb:Query
+              Resource: !GetAtt HousesTable.Arn
+
+  UpdateActuatorStateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+      Handler: src/update_actuator/app.lambda_handler
+      Environment:
+        Variables:
+          HOUSES_TABLE_NAME: !Ref HousesTable
+      Events:
+        UpdateActuatorState:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /actuator
+            Method: POST
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource: !GetAtt HousesTable.Arn
+  # ------------------------------------------------------------------
+  # 5. TABLES
+  # ------------------------------------------------------------------
+  HousesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ResourcesName}-houses-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: house_id
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: house_id
+          AttributeType: S
+        - AttributeName: actuator_id
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: actuatorIndex
+          KeySchema:
+            - AttributeName: actuator_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+Outputs:
+  ApiEndpoint:
+    Description: HTTP API Gateway endpoint URL
+    Value: !Sub https://${HttpApiGateway}.execute-api.${AWS::Region}.amazonaws.com
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+  IdentityPoolId:
+    Description: Cognito Identity Pool ID
+    Value: !Ref IdentityPool
