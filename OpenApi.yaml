@@ -1,0 +1,164 @@
+openapi: 3.1.0
+info:
+  title: House Control Backend
+  version: '0.0.1'
+  description: |
+    Receives the requests from frontend
+    and update the database with information, as well that keeps that devices updated
+    by using MQTT protocol to send information to different topics
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+servers:
+  - url: TBD
+
+paths:
+  /houses:
+    get:
+      summary: Get all houses that belongs to an specific user
+      operationId: getHouses
+      responses:
+        '200':
+          description: A list of houses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/House'
+  /create-house:
+    post:
+      summary: Create a new house
+      operationId: createHouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HouseRequestBody'
+      responses:
+        '201':
+          description: House created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/House'
+  /actuador:
+    post:
+      summary: Update the status of an actuator
+      operationId: updateActuator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActuadorUpdateRequestBody'
+      responses:
+        '200':
+          description: Actuator updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActuatorUpdateResponse'
+  /create-actuator:
+    post:
+      summary: Create a new actuator
+      operationId: createActuator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActuatorCreateRequest'
+      responses:
+        '200':
+          description: Actuator created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActuatorUpdateResponse'
+
+components:
+  schemas:
+    ActuatorCreateRequest:
+      type: object
+      properties:
+        house_id:
+          type: string
+          example: "123e4567-e89b-12d3-a456-426614"
+          description: The unique identifier of the house
+        actuator_name:
+          type: string
+          example: "Living Room Light"
+          description: The name of the actuator to be created
+    ActuatorUpdateResponse:
+      type: object
+      properties:
+        actuators:
+          type: object
+          description: Map that contains nested maps that represents each actuator linked to the house.
+          additionalProperties:
+            type: object
+            $ref: '#/components/schemas/Actuator'
+            description: The address of the house
+    ActuadorUpdateRequestBody:
+      type: object
+      properties:
+        house_id:
+          type: string
+          example: "123e4567-e89b-12d3-a456-426614"
+          description: The unique identifier of the house
+        actuator_id:
+          type: string
+          example: "123e4567-e89b-12d3-a456-426614"
+          description: The unique identifier of the actuator
+        actuator_status:
+          type: boolean
+          example: true
+          description: The new status of the actuator (true for active, false for inactive)
+    HouseRequestBody:
+      type: object
+      properties:
+        house_name:
+          type: string
+          example: "My House"
+          description: The name of the house
+    House:
+      type: object
+      properties:
+        house_id:
+          type: string
+          example: "123e4567-e89b-12d3-a456-426614174000"
+          description: The unique identifier of the house
+        house_name:
+          type: string
+          example: "My House"
+          description: The name of the house
+        actuators:
+          type: object
+          description: Map that contains nested maps that represents each actuator linked to the house.
+          additionalProperties:
+            type: object
+            $ref: '#/components/schemas/Actuator'
+            description: The address of the house
+
+    Actuator:
+      type: object
+      properties:
+        is_active:
+          type: boolean
+          default: false
+          description: Indicates whether the actuator is active or not
+        name:
+          type: string
+          example: "Living Room Light"
+          description: The name of the actuator
+  securitySchemes:
+    oauthNoScopes:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://auth.example.com/oauth/authorize
+          scopes: {}
+security:
+  - oauthNoScopes: []

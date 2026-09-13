@@ -27,7 +27,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         return build_response(200, response)
     except Exception as e:
-        logger.error(f"Error fetching actuators for user {pk}: {str(e)}")
+        logger.error(f"Error updating actuator for user {pk}: {str(e)}")
         return build_response(500, {"error": "Internal Server Error"})
 
 

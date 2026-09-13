@@ -123,97 +123,57 @@ Resources:
   # ------------------------------------------------------------------
   # 4. LAMBDA FUNCTION & IOT PERMISSIONS
   # ------------------------------------------------------------------
-  # IoTCreateUserFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     Tags:
-  #       Project: !Ref ProjectName
-  #       Environment: !Ref Environment
-  #     Handler: src/create_user/app.lambda_handler
-  #     Events:
-  #       CreateUser:
-  #         Type: HttpApi
-  #         Properties:
-  #           ApiId: !Ref HttpApiGateway
-  #           Path: /create-user
-  #           Method: POST
-  #     Policies:
-  #       - Statement:
-  #           - Effect: Allow
-  #             Action:
-  #               - dynamodb:Query
-  #               - dynamodb:Scan
-  #               - dynamodb:PutItem
-  #               - dynamodb:UpdateItem
-  #             Resource: !GetAtt UsersTable.Arn
 
-  # IoTCreateActuatorFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     Tags:
-  #       Project: !Ref ProjectName
-  #       Environment: !Ref Environment
-  #     Handler: src/create_actuator/app.lambda_handler
-  #     Events:
-  #       CreateActuator:
-  #         Type: HttpApi
-  #         Properties:
-  #           ApiId: !Ref HttpApiGateway
-  #           Path: /create-actuator
-  #           Method: POST
-  #     Policies:
-  #       - Statement:
-  #           - Effect: Allow
-  #             Action:
-  #               - dynamodb:Query
-  #               - dynamodb:Scan
-  #               - dynamodb:PutItem
-  #               - dynamodb:UpdateItem
-  #             Resource: !GetAtt UsersTable.Arn
-  #           - Effect: Allow
-  #             Action:
-  #               - dynamodb:Query
-  #               - dynamodb:Scan
-  #               - dynamodb:PutItem
-  #               - dynamodb:UpdateItem
-  #             Resource: !GetAtt HousesTable.Arn
+  CreateHouseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+      Handler: src/create_house/app.lambda_handler
+      Environment:
+        Variables:
+          HOUSES_TABLE_NAME: !Ref HousesTable
+      Events:
+        CreateHouse:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /create-house
+            Method: POST
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:PutItem
+              Resource: !GetAtt HousesTable.Arn
 
-
-  # IotPublisherFunction:
-  #   Type: AWS::Serverless::Function
-  #   Properties:
-  #     Tags:
-  #       Project: !Ref ProjectName
-  #       Environment: !Ref Environment
-  #     Handler: src/control/app.lambda_handler
-  #     Events:
-  #       PublishCommand:
-  #         Type: HttpApi
-  #         Properties:
-  #           ApiId: !Ref HttpApiGateway
-  #           Path: /control
-  #           Method: POST
-  #     Policies:
-  #       # Strict Principle of Least Privilege: Only allow iot:Publish to 'test_1'
-  #       - Statement:
-  #           - Effect: Allow
-  #             Action:
-  #               - dynamodb:Query
-  #               - dynamodb:Scan
-  #               - dynamodb:PutItem
-  #               - dynamodb:UpdateItem
-  #             Resource: !GetAtt UsersTable.Arn
-  #           - Effect: Allow
-  #             Action:
-  #               - dynamodb:Query
-  #               - dynamodb:Scan
-  #               - dynamodb:PutItem
-  #               - dynamodb:UpdateItem
-  #             Resource: !GetAtt HousesTable.Arn
-  #           - Effect: Allow
-  #             Action:
-  #               - iot:Publish
-  #             Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/*/control
+  CreateActuatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+      Handler: src/create_actuator/app.lambda_handler
+      Environment:
+        Variables:
+          HOUSES_TABLE_NAME: !Ref HousesTable
+      Events:
+        CreateActuator:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApiGateway
+            Path: /create-actuator
+            Method: POST
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+                - dynamodb:UpdateItem
+              Resource: !GetAtt HousesTable.Arn
 
   FetchUserHousesFunction:
     Type: AWS::Serverless::Function
@@ -238,7 +198,6 @@ Resources:
             - Effect: Allow
               Action:
                 - dynamodb:Query
-                # - dynamodb:Query
               Resource: !GetAtt HousesTable.Arn
 
   UpdateActuatorStateFunction:
@@ -266,6 +225,10 @@ Resources:
                 - dynamodb:Query
                 - dynamodb:UpdateItem
               Resource: !GetAtt HousesTable.Arn
+            - Effect: Allow
+              Action:
+                - iot:Publish
+              Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/*/control
   # ------------------------------------------------------------------
   # 5. TABLES
   # ------------------------------------------------------------------

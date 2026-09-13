@@ -2,10 +2,7 @@
 
 ## Data Structure in DynamoDB
 
-### users table
-
-
-### houses table
+### houses table (house-control-houses)
 
 ```json
 {
@@ -22,3 +19,8 @@
   }
 }
 ```
+
+## Request and Reponses
+
+### Fetch Houses
+
