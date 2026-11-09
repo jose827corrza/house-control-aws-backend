@@ -18,6 +18,10 @@ Parameters:
     Type: String
     Default: "house-control"
     Description: Cognito User Pool name
+  FrontEndUrl:
+    Type: String
+    Default: "https://housecontrolweb.netlify.app"
+    Description: Frontend URL for CORS configuration
 
 Globals:
   Function:
@@ -110,6 +114,22 @@ Resources:
     Type: AWS::Serverless::HttpApi
     Properties:
       Name: !Sub ${ResourcesName}-http-api-${Environment}
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref FrontEndUrl
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Amz-Date
+          - X-Api-Key
+          - X-Amz-Security-Token
+        MaxAge: 300
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:

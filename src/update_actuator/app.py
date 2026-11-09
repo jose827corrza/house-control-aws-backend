@@ -30,7 +30,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         logger.error(f"Error updating actuator for user {pk}: {str(e)}")
         return build_response(500, {"error": "Internal Server Error"})
 
-
 def get_user_id(event: Dict[str, Any]) -> str:
     authorizer = event.get("requestContext", {}).get("authorizer", {})
     claims = authorizer.get("jwt", {}).get("claims", {})
